@@ -1,0 +1,12 @@
+# Derleme çıktıları ve disk imajları
+/qemu/Image
+/source_code/rootfs/*.img
+/source_code/rootfs/rootfs_tree/
+/source_code/rootfs/busybox_install/
+/source_code/rootfs/busybox-1.36.1/
+/source_code/rootfs/*.tar.gz
+/source_code/rootfs/alpine-minirootfs.tar.gz
+/source_code/rootfs/busybox_install/
+# Sistem dosyaları
+.DS_Store
+*.log
