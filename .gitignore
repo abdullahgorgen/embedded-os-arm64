@@ -1,17 +1,18 @@
-# --- Build Artifacts & Binaries ---
+# Build Artifacts & Binaries
 /qemu/Image
-/linux-6.1.75/
-/*.tar.xz
-/*.log
+/qemu/linux-6.1.75/
+/qemu/*.tar.xz
+/qemu/*.log
 /source_code/collector
 /source_code/display
 /source_code/monitor
+/rootfs/monitor
 /rootfs/*.img
 /rootfs/rootfs_tree/
 /rootfs/busybox_install/
-/rootfs/busybox-1.36.1/
+/rootfs/busybox-*/
 /rootfs/*.tar.gz
 
-# --- System/IDE Files ---
+# System Files
 .DS_Store
 *.swp
