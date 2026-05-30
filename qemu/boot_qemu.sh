@@ -5,7 +5,7 @@
 set -e
 
 WORK_DIR=$(pwd)
-ROOTFS_IMG="${WORK_DIR}/../source_code/rootfs/rootfs.img"
+ROOTFS_IMG="${WORK_DIR}/../rootfs/rootfs.img"
 KERNEL_IMG="${WORK_DIR}/Image"
 QEMU_PORT=5555
 

@@ -6,7 +6,7 @@ set -e
 
 WORK_DIR=$(pwd)
 KERNEL_IMAGE="${WORK_DIR}/Image"
-ROOTFS_IMG="${WORK_DIR}/../source_code/rootfs/rootfs.img"
+ROOTFS_IMG="${WORK_DIR}/../rootfs/rootfs.img"
 
 # Renklendirme
 GREEN='\033[0;32m'

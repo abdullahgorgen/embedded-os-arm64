@@ -18,6 +18,6 @@ docker run -it --rm \
     -m 512M \
     -smp 2 \
     -kernel ./qemu/Image \
-    -drive file=./source_code/rootfs/rootfs.img,format=raw,if=virtio \
+    -drive file=./rootfs/rootfs.img,format=raw,if=virtio \
     -append 'root=/dev/vda rw console=ttyAMA0 init=/init' \
     -nographic"
