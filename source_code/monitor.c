@@ -1,203 +1,185 @@
+/*
+ * monitor.c — IPC Pipeline Aşama 2: Analiz ve Karar Mekanizması
+ *
+ * Görev : /tmp/pipe_1 FIFO'sundan collector'ın MemRawData struct'ını okur,
+ *          bellek kullanım yüzdesini hesaplar, %80 eşiğine göre
+ *          CRITICAL / NORMAL statüsü atar ve sonucu MemAnalysis struct'ı
+ *          olarak /tmp/pipe_2 FIFO'suna yazar.
+ *
+ * Derleme: aarch64-linux-gnu-gcc -static -o monitor monitor.c
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
+#include <time.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 
-#define BUFFER_SIZE 1024
-#define PROC_PATH "/proc"
+/* ─── Sabitler ─────────────────────────────────────────────── */
+#define FIFO_PIPE1        "/tmp/pipe_1"
+#define FIFO_PIPE2        "/tmp/pipe_2"
+#define CRITICAL_THRESHOLD 80.0f   /* % — bu değerin üstü CRITICAL */
 
-/* 
- * /proc dosya sistemi yapısını okuyan Sistem İzleyici
- * Hedef: CPU Mimarisi, RAM Kullanımı, Uptime
- */
+/* ─── Durum Enum'u ─────────────────────────────────────────── */
+typedef enum {
+    STATUS_NORMAL   = 0,
+    STATUS_CRITICAL = 1
+} MemStatus;
 
+/* ─── Giriş Veri Yapısı (collector ile aynı) ───────────────── */
 typedef struct {
-    char cpu_arch[256];         // CPU Mimarisi (aarch64, x86_64 vb.)
-    unsigned int cpu_cores;     // Çekirdek Sayısı
-    unsigned long total_mem;    // Toplam RAM (KB)
-    unsigned long free_mem;     // Boş RAM (KB)
-    unsigned long uptime_sec;   // Uptime (saniye)
-} SystemInfo;
+    unsigned long mem_total_kb;
+    unsigned long mem_free_kb;
+    time_t        timestamp;
+    unsigned int  seq;
+} MemRawData;
 
-/**
- * /proc/cpuinfo dosyasından CPU bilgilerini oku
+/* ─── Çıkış Veri Yapısı (monitor → display) ────────────────── */
+typedef struct {
+    unsigned long mem_total_kb;   /* Toplam RAM (kB)              */
+    unsigned long mem_used_kb;    /* Kullanılan RAM (kB)          */
+    float         usage_pct;      /* Kullanım yüzdesi [0..100]    */
+    MemStatus     status;         /* NORMAL veya CRITICAL         */
+    time_t        timestamp;      /* Örnekleme anı                */
+    unsigned int  seq;            /* Collector'dan gelen sıra no  */
+} MemAnalysis;
+
+/* ─── Analiz Motoru ────────────────────────────────────────── */
+static void analyze(const MemRawData *raw, MemAnalysis *out)
+{
+    out->mem_total_kb = raw->mem_total_kb;
+    out->mem_used_kb  = (raw->mem_total_kb > raw->mem_free_kb)
+                        ? (raw->mem_total_kb - raw->mem_free_kb)
+                        : 0UL;
+    out->timestamp    = raw->timestamp;
+    out->seq          = raw->seq;
+
+    /* Sıfıra bölünmeyi önle */
+    if (raw->mem_total_kb == 0) {
+        out->usage_pct = 0.0f;
+        out->status    = STATUS_NORMAL;
+        return;
+    }
+
+    out->usage_pct = (float)out->mem_used_kb * 100.0f
+                     / (float)raw->mem_total_kb;
+
+    out->status = (out->usage_pct >= CRITICAL_THRESHOLD)
+                  ? STATUS_CRITICAL
+                  : STATUS_NORMAL;
+}
+
+/* ─── FIFO Okuyucu (blocking) ──────────────────────────────── */
+/*
+ * pipe_1'i blocking modda açar. collector henüz yazmamışsa
+ * open() burada bloke olur — bu istenen davranış (back-pressure).
  */
-int read_cpu_info(SystemInfo *sys_info) {
-    FILE *fp;
-    char line[BUFFER_SIZE];
-    int cpu_count = 0;
-    int arch_found = 0;
+static int read_from_pipe1(MemRawData *data)
+{
+    int fd;
+    ssize_t n;
 
-    fp = fopen(PROC_PATH "/cpuinfo", "r");
-    if (fp == NULL) {
-        perror("fopen(/proc/cpuinfo)");
+    fd = open(FIFO_PIPE1, O_RDONLY);   /* Blocking: veri gelene kadar bekle */
+    if (fd < 0) {
+        perror("[MONITOR] open(pipe_1)");
         return -1;
     }
 
-    while (fgets(line, sizeof(line), fp) != NULL) {
-        // CPU mimarisi bulma
-        if (strncmp(line, "CPU architecture:", 17) == 0) {
-            sscanf(line, "CPU architecture: %s", sys_info->cpu_arch);
-            arch_found = 1;
-        }
+    n = read(fd, data, sizeof(MemRawData));
+    close(fd);
 
-        // Processor sayısını say
-        if (strncmp(line, "processor", 9) == 0) {
-            cpu_count++;
-        }
+    if (n == 0) {
+        fprintf(stderr, "[MONITOR] pipe_1 EOF — collector kapandı\n");
+        return -1;
     }
-
-    fclose(fp);
-
-    if (!arch_found) {
-        // arm64 sistemlerde "CPU implementer" kontrol et
-        fp = fopen(PROC_PATH "/cpuinfo", "r");
-        if (fp) {
-            while (fgets(line, sizeof(line), fp) != NULL) {
-                if (strncmp(line, "Model name:", 11) == 0) {
-                    sscanf(line, "Model name: %[^\n]", sys_info->cpu_arch);
-                    break;
-                }
-            }
-            fclose(fp);
-        }
+    if (n != (ssize_t)sizeof(MemRawData)) {
+        fprintf(stderr, "[MONITOR] Kısmi okuma: %zd/%zu bayt\n",
+                n, sizeof(MemRawData));
+        return -1;
     }
-
-    if (sys_info->cpu_arch[0] == '\0') {
-        strcpy(sys_info->cpu_arch, "Unknown (arm64/QEMU)");
-    }
-
-    sys_info->cpu_cores = cpu_count;
     return 0;
 }
 
-/**
- * /proc/meminfo dosyasından RAM bilgilerini oku
- */
-int read_memory_info(SystemInfo *sys_info) {
-    FILE *fp;
-    char line[BUFFER_SIZE];
-    unsigned long memtotal = 0, memfree = 0;
+/* ─── FIFO Yazıcı ──────────────────────────────────────────── */
+static int write_to_pipe2(const MemAnalysis *data)
+{
+    int fd;
+    ssize_t written;
 
-    fp = fopen(PROC_PATH "/meminfo", "r");
-    if (fp == NULL) {
-        perror("fopen(/proc/meminfo)");
+    fd = open(FIFO_PIPE2, O_WRONLY | O_NONBLOCK);
+    if (fd < 0) {
+        if (errno == ENXIO) {
+            fprintf(stderr, "[MONITOR] display henüz açmadı pipe_2 "
+                            "(seq=%u) — atlanıyor\n", data->seq);
+        } else {
+            perror("[MONITOR] open(pipe_2)");
+        }
         return -1;
     }
 
-    while (fgets(line, sizeof(line), fp) != NULL) {
-        if (strncmp(line, "MemTotal:", 9) == 0) {
-            sscanf(line, "MemTotal: %lu kB", &memtotal);
-        } else if (strncmp(line, "MemFree:", 8) == 0) {
-            sscanf(line, "MemFree: %lu kB", &memfree);
+    written = write(fd, data, sizeof(MemAnalysis));
+    close(fd);
+
+    if (written != (ssize_t)sizeof(MemAnalysis)) {
+        fprintf(stderr, "[MONITOR] Kısmi yazma pipe_2: %zd/%zu bayt\n",
+                written, sizeof(MemAnalysis));
+        return -1;
+    }
+    return 0;
+}
+
+/* ─── main ─────────────────────────────────────────────────── */
+int main(void)
+{
+    MemRawData   raw;
+    MemAnalysis  analysis;
+    const char  *status_str;
+
+    fprintf(stdout,
+            "[MONITOR] Başlatıldı.\n"
+            "          Giriş : " FIFO_PIPE1 "\n"
+            "          Çıkış : " FIFO_PIPE2 "\n"
+            "          Eşik  : %.0f%%\n",
+            CRITICAL_THRESHOLD);
+    fflush(stdout);
+
+    /* Her iki FIFO'yu oluştur — zaten varsa EEXIST sorun değil */
+    if (mkfifo(FIFO_PIPE1, 0666) < 0 && errno != EEXIST)
+        perror("[MONITOR] mkfifo(pipe_1)");   /* Uyarı, çıkış yok */
+
+    if (mkfifo(FIFO_PIPE2, 0666) < 0 && errno != EEXIST) {
+        perror("[MONITOR] mkfifo(pipe_2)");
+        return EXIT_FAILURE;
+    }
+
+    /* ─── Ana Döngü ─────────────────────────────────────────── */
+    while (1) {
+        /* 1. Ham veriyi oku (blocking — collector yazana kadar bekle) */
+        if (read_from_pipe1(&raw) < 0) {
+            sleep(1);
+            continue;
         }
+
+        /* 2. Analiz et */
+        analyze(&raw, &analysis);
+
+        status_str = (analysis.status == STATUS_CRITICAL)
+                     ? "CRITICAL" : "NORMAL";
+
+        fprintf(stdout,
+                "[MONITOR] #%u | Kullanım=%.1f%% | Durum=%s | "
+                "Kullanılan=%lu kB / Toplam=%lu kB\n",
+                analysis.seq, analysis.usage_pct, status_str,
+                analysis.mem_used_kb, analysis.mem_total_kb);
+        fflush(stdout);
+
+        /* 3. İşlenmiş veriyi pipe_2'ye yaz */
+        write_to_pipe2(&analysis);
     }
 
-    fclose(fp);
-
-    sys_info->total_mem = memtotal;
-    sys_info->free_mem = memfree;
-    return 0;
-}
-
-/**
- * /proc/uptime dosyasından sistem uptime'ını oku
- */
-int read_uptime_info(SystemInfo *sys_info) {
-    FILE *fp;
-    double uptime_seconds;
-    int idle_seconds;
-
-    fp = fopen(PROC_PATH "/uptime", "r");
-    if (fp == NULL) {
-        perror("fopen(/proc/uptime)");
-        return -1;
-    }
-
-    if (fscanf(fp, "%lf %d", &uptime_seconds, &idle_seconds) != 2) {
-        fprintf(stderr, "Error parsing /proc/uptime\n");
-        fclose(fp);
-        return -1;
-    }
-
-    fclose(fp);
-
-    sys_info->uptime_sec = (unsigned long)uptime_seconds;
-    return 0;
-}
-
-/**
- * Sistem bilgilerini düzenli formatta ekrana yazdır
- */
-void print_system_info(const SystemInfo *sys_info) {
-    unsigned long used_mem = sys_info->total_mem - sys_info->free_mem;
-    unsigned int uptime_hours = sys_info->uptime_sec / 3600;
-    unsigned int uptime_mins = (sys_info->uptime_sec % 3600) / 60;
-    unsigned int uptime_secs = sys_info->uptime_sec % 60;
-
-    printf("\n");
-    printf("╔════════════════════════════════════════════════════════╗\n");
-    printf("║         SISTEM İZLEYİCİ - QEMU arm64                  ║\n");
-    printf("╚════════════════════════════════════════════════════════╝\n");
-    printf("\n");
-
-    printf("📊 CPU BİLGİSİ\n");
-    printf("  Mimari: %s\n", sys_info->cpu_arch);
-    printf("  Çekirdek Sayısı: %u\n", sys_info->cpu_cores);
-    printf("\n");
-
-    printf("💾 BELLEK BİLGİSİ\n");
-    printf("  Toplam Bellek: %lu KB (%.2f MB)\n", 
-           sys_info->total_mem, 
-           sys_info->total_mem / 1024.0);
-    printf("  Boş Bellek: %lu KB (%.2f MB)\n", 
-           sys_info->free_mem, 
-           sys_info->free_mem / 1024.0);
-    printf("  Kullanılan Bellek: %lu KB (%.2f MB)\n", 
-           used_mem, 
-           used_mem / 1024.0);
-    printf("  Bellek Kullanım: %.2f%%\n", 
-           (100.0 * used_mem) / sys_info->total_mem);
-    printf("\n");
-
-    printf("⏱️  SISTEM UPTIME'I\n");
-    printf("  Uptime: %u saat %u dakika %u saniye\n", 
-           uptime_hours, uptime_mins, uptime_secs);
-    printf("  Toplam Saniye: %lu\n", sys_info->uptime_sec);
-    printf("\n");
-}
-
-/**
- * Main - Tüm sistem bilgilerini topla ve göster
- */
-int main(int argc, char *argv[]) {
-    SystemInfo sys_info;
-    memset(&sys_info, 0, sizeof(SystemInfo));
-
-    printf("[*] Sistem İzleyici başlatılıyor...\n");
-
-    // CPU bilgisi oku
-    if (read_cpu_info(&sys_info) != 0) {
-        fprintf(stderr, "CPU bilgisi okunamadı\n");
-        return 1;
-    }
-
-    // RAM bilgisi oku
-    if (read_memory_info(&sys_info) != 0) {
-        fprintf(stderr, "RAM bilgisi okunamadı\n");
-        return 1;
-    }
-
-    // Uptime bilgisi oku
-    if (read_uptime_info(&sys_info) != 0) {
-        fprintf(stderr, "Uptime bilgisi okunamadı\n");
-        return 1;
-    }
-
-    // Bilgileri ekrana yazdır
-    print_system_info(&sys_info);
-
-    return 0;
+    return EXIT_SUCCESS;
 }

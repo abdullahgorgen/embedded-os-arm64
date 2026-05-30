@@ -113,6 +113,26 @@ dd if=/dev/zero of="$ROOTFS_IMG" bs=1M count="$ROOTFS_SIZE" 2>/dev/null
 mkfs.ext4 -F -L "rootfs" "$ROOTFS_IMG" > /dev/null 2>&1
 echo -e "  ${GREEN}✓ ext4 imajı oluşturuldu${NC}"
 
+# --- ADIM 6.5: IPC Pipeline binary'leri enjekte et ---
+IPC_SRC="$(dirname "$WORK_DIR")/source_code"
+IPC_DST="$ROOTFS_DIR/usr/bin"
+IPC_BINS="collector monitor display"
+
+echo -e "${YELLOW}[6] IPC binary'leri ekleniyor...${NC}"
+if [ -d "$IPC_SRC" ]; then
+    for bin in $IPC_BINS; do
+        if [ -f "$IPC_SRC/$bin" ]; then
+            cp "$IPC_SRC/$bin" "$IPC_DST/$bin"
+            chmod 755 "$IPC_DST/$bin"
+            echo -e "  ${GREEN}✓${NC} $bin → /usr/bin/$bin"
+        else
+            echo -e "  ${YELLOW}⚠${NC} $bin bulunamadı ($IPC_SRC/$bin) — atlanıyor"
+        fi
+    done
+else
+    echo -e "  ${YELLOW}⚠${NC} source_code/ bulunamadı — IPC binary'leri atlandı"
+fi
+
 # --- ADIM 7: Mount ve kopyalama ---
 echo -e "${YELLOW}[6] RootFS imajına kopyalanıyor...${NC}"
 MOUNT_POINT=$(mktemp -d)
@@ -191,4 +211,4 @@ echo ""
 echo -e "${GREEN}✓ RootFS Oluşturma Tamamlandı!${NC}"
 echo ""
 echo -e "${YELLOW}Sıradaki adım:${NC}"
-echo "  cd $(dirname $WORK_DIR)/qemu && ./boot_kernel.sh"
+echo "  cd ../qemu && ./boot_kernel.sh"
