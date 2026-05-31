@@ -27,15 +27,16 @@ CFLAGS  = -Wall -Wextra -Wpedantic \
 LDFLAGS = -static
 
 # ─── Hedef Binary'ler ──────────────────────────────────────────
-TARGETS = collector monitor display
+TARGETS = collector monitor display stress_mem
 
 # ─── Kaynak → Binary Eşlemeleri ───────────────────────────────
-collector_SRC = collector.c
-monitor_SRC   = monitor.c
-display_SRC   = display.c
+collector_SRC  = collector.c
+monitor_SRC    = monitor.c
+display_SRC    = display.c
+stress_mem_SRC = stress_mem.c
 
 # ─── Varsayılan Hedef ──────────────────────────────────────────
-.PHONY: all clean verify install info rebuild
+.PHONY: all clean verify install install-scripts info rebuild
 
 all: $(TARGETS)
 	@echo ""
@@ -61,6 +62,12 @@ display: $(display_SRC)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 	$(STRIP) $@
 	@echo "[✓]   display hazır"
+
+stress_mem: $(stress_mem_SRC)
+	@echo "[CC]  $< → $@"
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+	$(STRIP) $@
+	@echo "[✓]   stress_mem hazır"
 
 # ─── Doğrulama ─────────────────────────────────────────────────
 verify: $(TARGETS)
@@ -97,6 +104,14 @@ install: $(TARGETS)
 		chmod 755 $(INSTALL_BIN)/$$bin; \
 	done
 	@echo "[✓] Tüm binary'ler $(INSTALL_BIN) dizinine kopyalandı"
+
+# ─── Betik Kurulumu ───────────────────────────────────────────
+install-scripts:
+	@echo "[*] Betik kurulumu: $(INSTALL_BIN)"
+	@mkdir -p $(INSTALL_BIN)
+	cp -v meminfo.sh $(INSTALL_BIN)/meminfo
+	chmod 755 $(INSTALL_BIN)/meminfo
+	@echo "[✓] meminfo → $(INSTALL_BIN)/meminfo"
 
 # ─── Temizleme ─────────────────────────────────────────────────
 clean:

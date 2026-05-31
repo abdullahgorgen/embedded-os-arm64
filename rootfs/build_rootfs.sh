@@ -116,7 +116,7 @@ echo -e "  ${GREEN}✓ ext4 imajı oluşturuldu${NC}"
 # --- ADIM 6.5: IPC Pipeline binary'leri enjekte et ---
 IPC_SRC="$(dirname "$WORK_DIR")/source_code"
 IPC_DST="$ROOTFS_DIR/usr/bin"
-IPC_BINS="collector monitor display"
+IPC_BINS="collector monitor display stress_mem"
 
 echo -e "${YELLOW}[6] IPC binary'leri ekleniyor...${NC}"
 if [ -d "$IPC_SRC" ]; then
@@ -129,6 +129,15 @@ if [ -d "$IPC_SRC" ]; then
             echo -e "  ${YELLOW}⚠${NC} $bin bulunamadı ($IPC_SRC/$bin) — atlanıyor"
         fi
     done
+
+    # meminfo.sh betiğini de kopyala (uzantısız)
+    if [ -f "$IPC_SRC/meminfo.sh" ]; then
+        cp "$IPC_SRC/meminfo.sh" "$IPC_DST/meminfo"
+        chmod 755 "$IPC_DST/meminfo"
+        echo -e "  ${GREEN}✓${NC} meminfo.sh → /usr/bin/meminfo"
+    else
+        echo -e "  ${YELLOW}⚠${NC} meminfo.sh bulunamadı ($IPC_SRC/meminfo.sh) — atlanıyor"
+    fi
 else
     echo -e "  ${YELLOW}⚠${NC} source_code/ bulunamadı — IPC binary'leri atlandı"
 fi

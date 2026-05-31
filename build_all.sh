@@ -36,7 +36,7 @@ echo ''
 echo '══ İmaj İçi Doğrulama ══'
 MNTDIR=$(mktemp -d)
 mount -o loop,ro rootfs.img "$MNTDIR"
-for b in collector monitor display; do
+for b in collector monitor display stress_mem meminfo; do
   if [ -x "$MNTDIR/usr/bin/$b" ]; then
     echo "  ✓ /usr/bin/$b — imaj içinde"
   else
