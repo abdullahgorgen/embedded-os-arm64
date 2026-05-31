@@ -56,4 +56,3 @@ rootfs/rootfs_tree/sbin/*
 rootfs/rootfs_tree/usr/bin/*
 rootfs/rootfs_tree/usr/sbin/*
 
-*.md
