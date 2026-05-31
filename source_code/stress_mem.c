@@ -28,7 +28,7 @@
 
 /* ─── Ayarlar ───────────────────────────────────────────────── */
 #define CHUNK_MB          50          /* Her adımda tahsis edilecek MB  */
-#define PEAK_MB          350          /* Bu değere ulaşınca sıfırla     */
+#define PEAK_MB          400          /* Bu değere ulaşınca sıfırla     */
 #define ALLOC_INTERVAL_SEC  3         /* Tahsis adımları arası bekleme  */
 #define LOG_PATH         "/tmp/stress.log"
 

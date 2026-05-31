@@ -61,7 +61,7 @@ fi
 # --- ADIM 1: Dizin yapısı ---
 echo -e "${YELLOW}[1] Dizin yapısı oluşturuluyor...${NC}"
 rm -rf "$ROOTFS_DIR" "$ROOTFS_IMG"
-mkdir -p "$ROOTFS_DIR"/{bin,sbin,lib,lib64,usr/bin,usr/sbin,usr/lib,etc,dev,proc,sys,tmp,root,var/log,run}
+mkdir -p "$ROOTFS_DIR"/{bin,sbin,lib,lib64,lib/modules,usr/bin,usr/sbin,usr/lib,etc,dev,proc,sys,tmp,root,var/log,run}
 
 # --- ADIM 2: BusyBox kopyalama ---
 echo -e "${YELLOW}[2] BusyBox kopyalanıyor...${NC}"
@@ -137,6 +137,18 @@ if [ -d "$IPC_SRC" ]; then
         echo -e "  ${GREEN}✓${NC} meminfo.sh → /usr/bin/meminfo"
     else
         echo -e "  ${YELLOW}⚠${NC} meminfo.sh bulunamadı ($IPC_SRC/meminfo.sh) — atlanıyor"
+    fi
+
+    # sys_alarm_driver.ko modülünü /lib/modules/'a kopyala
+    KO_SRC="$IPC_SRC/driver/sys_alarm_driver.ko"
+    KO_DST="$ROOTFS_DIR/lib/modules"
+    if [ -f "$KO_SRC" ]; then
+        cp "$KO_SRC" "$KO_DST/"
+        chmod 644 "$KO_DST/sys_alarm_driver.ko"
+        echo -e "  ${GREEN}✓${NC} sys_alarm_driver.ko → /lib/modules/"
+    else
+        echo -e "  ${YELLOW}⚠${NC} sys_alarm_driver.ko bulunamadı ($KO_SRC)"
+        echo -e "       Önce kernel modülünü derleyin: make -C source_code/driver/"
     fi
 else
     echo -e "  ${YELLOW}⚠${NC} source_code/ bulunamadı — IPC binary'leri atlandı"

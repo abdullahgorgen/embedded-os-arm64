@@ -6,6 +6,9 @@
  *          CRITICAL / NORMAL statüsü atar ve sonucu MemAnalysis struct'ı
  *          olarak /tmp/pipe_2 FIFO'suna yazar.
  *
+ *          Ek özellik: Durum değişiminde /dev/sys_alarm (kernel modülü)
+ *          arayüzüne '1' (CRITICAL) veya '0' (NORMAL) yazar.
+ *
  * Derleme: aarch64-linux-gnu-gcc -static -o monitor monitor.c
  */
 
@@ -19,10 +22,11 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-/* ─── Sabitler ─────────────────────────────────────────────── */
-#define FIFO_PIPE1        "/tmp/pipe_1"
-#define FIFO_PIPE2        "/tmp/pipe_2"
-#define CRITICAL_THRESHOLD 80.0f   /* % — bu değerin üstü CRITICAL */
+/* ─── Sabitler ─────────────────────────────────────────── */
+#define FIFO_PIPE1         "/tmp/pipe_1"
+#define FIFO_PIPE2         "/tmp/pipe_2"
+#define CRITICAL_THRESHOLD  80.0f   /* % — bu değerin üstü CRITICAL */
+#define SYS_ALARM_DEV      "/dev/sys_alarm"  /* Kernel platform sürücüsü */
 
 /* ─── Durum Enum'u ─────────────────────────────────────────── */
 typedef enum {
@@ -132,20 +136,54 @@ static int write_to_pipe2(const MemAnalysis *data)
     return 0;
 }
 
-/* ─── main ─────────────────────────────────────────────────── */
+/* ─── Kernel Alarm Yazıcısı ─────────────────────────────────── */
+/*
+ * /dev/sys_alarm'a durum yazar: '1' = CRITICAL, '0' = NORMAL
+ * Non-fatal: modül yüklenmemişse hata loglanır, çalışmaya devam eder.
+ */
+static void write_alarm(int alarm_fd, MemStatus status)
+{
+    const char val = (status == STATUS_CRITICAL) ? '1' : '0';
+    ssize_t n;
+
+    if (alarm_fd < 0) return;   /* Cihaz açılamadıysa atla */
+
+    n = write(alarm_fd, &val, 1);
+    if (n < 0)
+        fprintf(stderr, "[MONITOR] /dev/sys_alarm yazılamadı: %s\n",
+                strerror(errno));
+}
+
+/* ─── main ───────────────────────────────────────────────── */
 int main(void)
 {
     MemRawData   raw;
     MemAnalysis  analysis;
     const char  *status_str;
+    MemStatus    prev_status = STATUS_NORMAL;   /* Durum değişimi takibi */
+    int          alarm_fd;                      /* /dev/sys_alarm tanıtıcısı */
 
     fprintf(stdout,
             "[MONITOR] Başlatıldı.\n"
             "          Giriş : " FIFO_PIPE1 "\n"
             "          Çıkış : " FIFO_PIPE2 "\n"
-            "          Eşik  : %.0f%%\n",
+            "          Eşik  : %.0f%%\n"
+            "          Alarm : " SYS_ALARM_DEV "\n",
             CRITICAL_THRESHOLD);
     fflush(stdout);
+
+    /* /dev/sys_alarm aç — modül yüklenmemişse devam et */
+    alarm_fd = open(SYS_ALARM_DEV, O_WRONLY);
+    if (alarm_fd < 0) {
+        fprintf(stderr,
+                "[MONITOR] UYARI: %s açılamadı (%s)\n"
+                "          sys_alarm_driver.ko yüklenmemiş olabilir.\n"
+                "          Pipeline devam ediyor, alarm devre dışı.\n",
+                SYS_ALARM_DEV, strerror(errno));
+    } else {
+        fprintf(stdout, "[MONITOR] %s bağlantısı kuruldu (fd=%d)\n",
+                SYS_ALARM_DEV, alarm_fd);
+    }
 
     /* Her iki FIFO'yu oluştur — zaten varsa EEXIST sorun değil */
     if (mkfifo(FIFO_PIPE1, 0666) < 0 && errno != EEXIST)
@@ -177,9 +215,22 @@ int main(void)
                 analysis.mem_used_kb, analysis.mem_total_kb);
         fflush(stdout);
 
-        /* 3. İşlenmiş veriyi pipe_2'ye yaz */
+        /* 3. Durum değişimi varsa kernel alarm arayüzüne yaz */
+        if (analysis.status != prev_status) {
+            write_alarm(alarm_fd, analysis.status);
+            fprintf(stdout,
+                    "[MONITOR] Durum değişimi: %s → %s → %s'e yazildı\n",
+                    (prev_status == STATUS_CRITICAL) ? "CRITICAL" : "NORMAL",
+                    status_str,
+                    SYS_ALARM_DEV);
+            fflush(stdout);
+            prev_status = analysis.status;
+        }
+
+        /* 4. İşlenmiş veriyi pipe_2'ye yaz */
         write_to_pipe2(&analysis);
     }
 
+    if (alarm_fd >= 0) close(alarm_fd);
     return EXIT_SUCCESS;
 }
