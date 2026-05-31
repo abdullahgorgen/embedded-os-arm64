@@ -55,6 +55,5 @@ rootfs/rootfs_tree/bin/*
 rootfs/rootfs_tree/sbin/*
 rootfs/rootfs_tree/usr/bin/*
 rootfs/rootfs_tree/usr/sbin/*
-rootfs/rootfs_tree/linuxrc
 
 *.md

@@ -1,16 +1,16 @@
 /*
  * stress_mem.c — Dinamik Bellek Manipülatörü
  *
- * Amaç    : IPC pipeline'ının NORMAL ↔ CRITICAL geçişlerini tetiklemek
- * için belleği kademeli olarak doldurur ve serbest bırakır.
+ * Amaç  : IPC pipeline'ının NORMAL ↔ CRITICAL geçişlerini tetiklemek
+ *          için belleği kademeli olarak doldurur ve serbest bırakır.
  *
  * Davranış:
- * - Başlangıçta tek satır uyarı mesajı basar, sonra sessizleşir.
- * - Her ALLOC_INTERVAL_SEC saniyede bir CHUNK_MB'lık bellek tahsis
- * ederek fiziksel RAM'e yazar (memset → swap'a kaçmasını önler).
- * - Toplam tahsis PEAK_MB'a ulaştığında tüm bellek free() ile
- * serbest bırakılır ve döngü baştan başlar.
- * - Döngü içi tüm mesajlar /tmp/stress.log dosyasına yazılır.
+ *   - Başlangıçta tek satır uyarı mesajı basar, sonra sessizleşir.
+ *   - Her ALLOC_INTERVAL_SEC saniyede bir CHUNK_MB'lık bellek tahsis
+ *     ederek fiziksel RAM'e yazar (memset → swap'a kaçmasını önler).
+ *   - Toplam tahsis PEAK_MB'a ulaştığında tüm bellek free() ile
+ *     serbest bırakılır ve döngü baştan başlar.
+ *   - Döngü içi tüm mesajlar /tmp/stress.log dosyasına yazılır.
  *
  * Kullanım : ./stress_mem &
  *
@@ -87,8 +87,8 @@ int main(void)
 {
     size_t chunk_bytes = (size_t)CHUNK_MB * 1024UL * 1024UL;
 
-    /* Tek seferlik kullanıcı uyarısı — terminale (Kalın Sarı/Turuncu) */
-    printf("\033[1;33mUYARI: Sistem belleği dinamik olarak manipüle ediliyor...\033[0m\n");
+    /* Tek seferlik kullanıcı uyarısı — terminale */
+    printf("UYARI: Sistem belleği dinamik olarak manipüle ediliyor...\n");
     printf("       Log: " LOG_PATH " | Peak: %d MB | Adım: %d MB / %d sn\n",
            PEAK_MB, CHUNK_MB, ALLOC_INTERVAL_SEC);
     fflush(stdout);
@@ -96,6 +96,7 @@ int main(void)
     /* Bundan sonra stdout'a hiç yazma — tüm çıktı log dosyasına */
     log_fp = fopen(LOG_PATH, "w");
     if (!log_fp) {
+        /* fopen başarısız olsa da sessizce devam et */
         log_fp = NULL;
     }
 

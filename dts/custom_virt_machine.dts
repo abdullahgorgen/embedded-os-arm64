@@ -396,7 +396,7 @@
 
 	chosen {
 		stdout-path = "/pl011@9000000";
-		kaslr-seed = <0xd8d1cbb3 0xae125a3d>;
+		kaslr-seed = <0x346ecebc 0x48a93a9b>;
 	};
 
 	system_alarm@09080000 {
