@@ -25,14 +25,14 @@ echo ""
 echo "[1/6] Kernel yapılandırması (defconfig + modules_prepare)..."
 cd "$KDIR"
 if [ ! -f .config ]; then
-    make ARCH=$ARCH CROSS_COMPILE=$CROSS defconfig -j$NPROC > /dev/null 2>&1
+    make ARCH=$ARCH CROSS_COMPILE=$CROSS defconfig -j$NPROC
 fi
-make ARCH=$ARCH CROSS_COMPILE=$CROSS modules_prepare -j$NPROC > /dev/null 2>&1
+make ARCH=$ARCH CROSS_COMPILE=$CROSS modules_prepare -j$NPROC
 
 # ─── ADIM 2: KULLANICI UZAYI IPC BİLEŞENLERİ ───────────────────────
 echo "[2/6] IPC userspace binary'leri derleniyor..."
 cd "$PROJECT_ROOT/source_code"
-make clean > /dev/null 2>&1 || true
+make clean || true
 make all
 make verify
 
@@ -47,7 +47,7 @@ chmod 755 "$BIN_STAGE_DIR/"*
 # ─── ADIM 3: PLATFORM SÜRÜCÜSÜ DERLEME ─────────────────────────────
 echo "[3/6] sys_alarm_driver.ko derleniyor..."
 cd "$PROJECT_ROOT/source_code/driver"
-make clean > /dev/null 2>&1 || true
+make clean || true
 make KDIR="$KDIR"
 
 mkdir -p "$MOD_STAGE_DIR"
@@ -61,14 +61,14 @@ BASE_DTS="$PROJECT_ROOT/dts/virt_base.dts"
 CUSTOM_DTS="$PROJECT_ROOT/dts/custom_virt_machine.dts"
 CUSTOM_DTB="$PROJECT_ROOT/dts/custom_virt_machine.dtb"
 
-qemu-system-aarch64 -machine virt,dumpdtb="$BASE_DTB" -cpu cortex-a72 -m 512M -smp 2 -nographic -nodefaults 2>/dev/null || true
+qemu-system-aarch64 -machine virt,dumpdtb="$BASE_DTB" -cpu cortex-a72 -m 512M -smp 2 -nographic -nodefaults || true
 
 if [ ! -f "$BASE_DTB" ]; then
     echo "HATA: Ham DTB dökümü alınamadı!"
     exit 1
 fi
 
-dtc -I dtb -O dts -o "$BASE_DTS" "$BASE_DTB" 2>/dev/null
+dtc -I dtb -O dts -o "$BASE_DTS" "$BASE_DTB"
 
 python3 - "$BASE_DTS" "$CUSTOM_DTS" << 'PYEOF'
 import sys
@@ -93,26 +93,90 @@ with open(sys.argv[2], 'w') as f:
     f.write(new_content)
 PYEOF
 
-dtc -I dts -O dtb -o "$CUSTOM_DTB" "$CUSTOM_DTS" 2>&1 | grep -v Warning || true
+dtc -I dts -O dtb -o "$CUSTOM_DTB" "$CUSTOM_DTS" || true
 
-if dtc -I dtb -O dts "$CUSTOM_DTB" 2>/dev/null | grep -q 'marmara,system-alarm'; then
+if dtc -I dtb -O dts "$CUSTOM_DTB" | grep -q 'marmara,system-alarm'; then
     echo "  Doğrulama: Aygıt ağacı enjeksiyonu kararlı."
 else
     echo "HATA: Aygıt ağacı düğümü bulunamadı."
     exit 1
 fi
 
-# ─── ADIM 5: ROOTFS PAKETLEME ──────────────────────────────────────
+# ─── ADIM 5: ROOTFS PAKETLEME VE BUSYBOX TEDARİKİ ──────────────────
 echo "[5/6] Kök dosya sistemi imajı yeniden oluşturuluyor..."
-cd "$PROJECT_ROOT/rootfs"
-bash build_rootfs.sh
+ROOTFS_IMG="$PROJECT_ROOT/rootfs/rootfs.img"
+BUSYBOX_INSTALL="$PROJECT_ROOT/rootfs/busybox_install"
+
+# BusyBox Otonom Tedarik ve Derleme
+if [ ! -d "$BUSYBOX_INSTALL" ]; then
+    echo "  [*] BusyBox kurulumu bulunamadı. Otonom olarak derleniyor..."
+    cd "$PROJECT_ROOT/rootfs"
+    if [ ! -d "busybox-1.36.1" ]; then
+        wget -q https://busybox.net/downloads/busybox-1.36.1.tar.bz2
+        tar -xjf busybox-1.36.1.tar.bz2
+    fi
+    cd busybox-1.36.1
+    make distclean || true
+    make ARCH=$ARCH CROSS_COMPILE=$CROSS defconfig
+    sed -i 's/^# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
+    make ARCH=$ARCH CROSS_COMPILE=$CROSS -j$NPROC
+    make ARCH=$ARCH CROSS_COMPILE=$CROSS CONFIG_PREFIX="$BUSYBOX_INSTALL" install
+    echo "  [✓] BusyBox statik derlemesi tamamlandı."
+fi
+
+# Temel dizin yapısının oluşturulması
+cd "$PROJECT_ROOT"
+mkdir -p "$ROOTFS_TREE"/{bin,sbin,lib,lib64,etc,dev,proc,sys,tmp,root,var/log,run}
+
+# BusyBox bileşenlerinin aktarılması
+cp -a "$BUSYBOX_INSTALL"/* "$ROOTFS_TREE/"
+
+# Sistem başlatma betiğinin (init) oluşturulması
+cat << 'EOF_INIT' > "$ROOTFS_TREE/init"
+#!/bin/sh
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+echo ""
+echo "=== QEMU ARM64 Embedded Linux ==="
+echo "Kernel: \$(uname -r)"
+echo ""
+exec setsid cttyhack /bin/sh
+EOF_INIT
+chmod 755 "$ROOTFS_TREE/init"
+
+# Dosya sistemi montaj tablosunun oluşturulması
+cat << 'EOF_FSTAB' > "$ROOTFS_TREE/etc/fstab"
+/dev/vda / ext4 defaults,rw 0 1
+proc /proc proc defaults 0 0
+sysfs /sys sysfs defaults 0 0
+devtmpfs /dev devtmpfs defaults 0 0
+EOF_FSTAB
+
+cat << 'EOF_INITTAB' > "$ROOTFS_TREE/etc/inittab"
+::sysinit:/init
+::askfirst:/bin/sh
+::ctrlaltdel:/sbin/reboot
+EOF_INITTAB
+
+# İmaj diskinin formatlanması ve paketlenmesi
+rm -f "$ROOTFS_IMG"
+dd if=/dev/zero of="$ROOTFS_IMG" bs=1M count=512
+mkfs.ext4 -F -L "rootfs" "$ROOTFS_IMG"
+
+MOUNT_POINT=$(mktemp -d)
+mount -o loop "$ROOTFS_IMG" "$MOUNT_POINT"
+cp -a "$ROOTFS_TREE"/. "$MOUNT_POINT/"
+sync
+umount "$MOUNT_POINT"
+rmdir "$MOUNT_POINT"
 
 # ─── ADIM 6: FİNAL İMAJ İÇİ DOĞRULAMA ──────────────────────────────
 echo "[6/6] Nihai RootFS İmajı bütünlük denetimi..."
 MNTDIR=$(mktemp -d)
 
-# Bağlama işlemi root yetkisi gerektirir
-sudo mount -o loop,ro "$PROJECT_ROOT/rootfs/rootfs.img" "$MNTDIR"
+mount -o loop,ro "$ROOTFS_IMG" "$MNTDIR"
 
 CHECK_OK=0
 CHECK_FAIL=0
@@ -133,8 +197,10 @@ check_file "Display"            "usr/bin/display"
 check_file "Stress Tool"        "usr/bin/stress_mem"
 check_file "Orchestrator"       "usr/bin/meminfo"
 check_file "Platform Sürücüsü"  "lib/modules/sys_alarm_driver.ko"
+check_file "Init Betiği"        "init"
+check_file "BusyBox Binary"     "bin/busybox"
 
-sudo umount "$MNTDIR"
+umount "$MNTDIR"
 rmdir "$MNTDIR"
 echo ""
 
