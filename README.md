@@ -91,7 +91,8 @@ meminfo
 ## 6. Dizin Hiyerarşisi (Repository Structure)
 
 ```text
-199825113_abdullahgörgen/
+
+embedded-os-arm64/
 ├── README.md               # Proje dokümantasyonu
 ├── build_all.sh            # Tam üretim ve derleme (pipeline) betiği
 ├── clean_all.sh            # Çalışma alanı temizlik betiği (varsa/opsiyonel)

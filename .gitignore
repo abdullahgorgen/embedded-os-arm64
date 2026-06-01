@@ -23,6 +23,7 @@ source_code/stress_mem
 
 # 3. Device Tree (DTB/DTS) Otomasyon Çıktıları
 dts/*.dtb
+dts/*.dts
 # virt_base.dts QEMU'dan dinamik üretildiği için depoya eklenmez.
 # Yalnızca manuel olarak yapılandırılan custom_virt_machine.dts izlenir.
 dts/virt_base.dts
@@ -55,4 +56,4 @@ rootfs/rootfs_tree/bin/*
 rootfs/rootfs_tree/sbin/*
 rootfs/rootfs_tree/usr/bin/*
 rootfs/rootfs_tree/usr/sbin/*
-
+rootfs/rootfs_tree/linuxrc
