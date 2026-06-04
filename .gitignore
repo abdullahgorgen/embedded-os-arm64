@@ -1,59 +1,66 @@
 # ===================================================================
-# .gitignore — ARM64 Embedded Linux (IPC, Device Tree & Char Driver)
+# .gitignore - ARM64 Embedded Linux / C / Kernel Module Outputs
 # ===================================================================
 
-# 1. Çekirdek (Kernel) Modülü Derleme Kalıntıları
-*.ko
-*.o
-*.mod
-*.mod.c
-.*.cmd
-modules.order
-Module.symvers
-*.symvers
-.tmp_versions/
+# Keep repository skeleton markers.
+!**/.gitkeep
 
-# 2. Kullanıcı Uzayı (User Space) C Derleme Çıktıları
+# C and userspace build outputs
+*.o
 *.a
 *.d
+*.su
 source_code/collector
 source_code/monitor
 source_code/display
 source_code/stress_mem
 
-# 3. Device Tree (DTB/DTS) Otomasyon Çıktıları
-dts/*.dtb
-dts/*.dts
-# virt_base.dts QEMU'dan dinamik üretildiği için depoya eklenmez.
-# Yalnızca manuel olarak yapılandırılan custom_virt_machine.dts izlenir.
-dts/virt_base.dts
+# Linux kernel module build outputs
+*.ko
+*.mod
+*.mod.c
+.*.cmd
+.tmp_versions/
+modules.order
+Module.symvers
+*.symvers
 
-# 4. QEMU ve RootFS İmajları (Büyük Boyutlu Binary'ler)
-rootfs/*.img
-qemu/linux-6.1.75/
+# Kernel, QEMU, RootFS and boot images
+*.img
+Image
+vmlinux
 qemu/Image
+rootfs/*.img
 
-# 5. Log ve Geçici Sistem Dosyaları
+# Device Tree generated artifacts
+*.dtb
+dts/*.dts
+
+# Downloaded and extracted external sources
+*.tar
+*.tar.*
+qemu/linux-*/
+rootfs/busybox-*/
+rootfs/busybox_install/
+
+# RootFS staging tree generated during packaging
+rootfs/rootfs_tree/
+
+# Logs and temporary files
 *.log
-/tmp/
+*.tmp
+tmp/
 
-# 6. İşletim Sistemi ve IDE Artıkları
+# Editor, OS and language tooling artifacts
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
-
-# 7. Python Artıkları (DTS manipülasyon betikleri için)
 __pycache__/
 *.pyc
 
-# 8. Dış Bağımlılıklar ve Geçici RootFS Çıktıları
-rootfs/busybox-*/
-rootfs/busybox_install/
-rootfs/rootfs_tree/bin/*
-rootfs/rootfs_tree/sbin/*
-rootfs/rootfs_tree/usr/bin/*
-rootfs/rootfs_tree/usr/sbin/*
-rootfs/rootfs_tree/linuxrc
+# Local assignment/report scratch files
+prompt.txt
+report_sablonu.md

@@ -4,7 +4,7 @@
 
 Bu proje, ARM64 (aarch64) mimarisi hedeflenerek tasarlanmış, QEMU sanallaştırma ortamı üzerinde çalıştırılan ve BusyBox tabanlı minimal bir Kök Dosya Sistemi (RootFS) barındıran tam donanımlı bir Gömülü Linux (v6.1.75) işletim sistemidir. Akademik bağlamda "Yapay Zeka Destekli Mühendislik Geliştirme Süreci" yaklaşımı benimsenerek, gömülü sistemlerin temel alt katmanlarının (Derleme araç zinciri, Çekirdek yapılandırması, Cihaz Ağacı ve IPC) otonom şekilde entegre edilmesi hedeflenmiştir. 
 
-Sistem, işletim sisteminin bellek tüketimini dinamik olarak test eden, bu tüketimi adlandırılmış boru hattı (Named Pipe - FIFO) mekanizması ile süreçler arası iletişim (IPC) sağlayarak toplayan, analiz eden ve terminal tabanlı bir arayüz ile görselleştiren kullanıcı uzayı (User Space) uygulamalarından oluşmaktadır. Ayrıca, analitik veriler neticesinde kritik bellek eşiği (%80) aşıldığında, ağaç dışı (Out-of-Tree) derlenmiş ve özel bir Device Tree (DTS) düğümü (marmara,system-alarm) ile eşleştirilmiş `sys_alarm_driver.ko` çekirdek modülü üzerinden donanımsal bir alarm mekanizması tetiklenmektedir. Tüm bu karmaşık mimari bileşenler, sistem izolasyonunu ve tekrarlanabilirliği sağlamak amacıyla Docker konteynerleri içerisinde yürütülen otonom bash betikleriyle derlenmektedir.
+Sistem, işletim sisteminin bellek tüketimini dinamik olarak test eden, bu tüketimi adlandırılmış boru hattı (Named Pipe - FIFO) mekanizması ile süreçler arası iletişim (IPC) sağlayarak toplayan, analiz eden ve terminal tabanlı bir arayüz ile görselleştiren kullanıcı uzayı (User Space) uygulamalarından oluşmaktadır. Ayrıca, analitik veriler neticesinde kritik bellek eşiği (%80) aşıldığında, ağaç dışı (Out-of-Tree) derlenmiş ve özel bir Device Tree (DTS) düğümü (marmara,system-alarm) ile eşleştirilmiş `sys_alarm_driver.ko` çekirdek modülü üzerinden donanımsal bir alarm mekanizması tetiklenmektedir. Tüm bu karmaşık mimari bileşenler, sistem izolasyonunu ve tekrarlanabilirliği sağlamak amacıyla kök dizindeki merkezi `Makefile` tarafından yönetilen Docker tabanlı üretim hattıyla derlenmektedir.
 
 ## 2. Mimari Detaylar
 
@@ -23,18 +23,20 @@ Sistem donanım soyutlamasını ve reaksiyonunu sağlamak üzere Linux çekirdek
 
 ## 3. Güncel Dizin Hiyerarşisi
 
-Aşağıdaki yapı, kaynak kod yönetim sistemindeki (Repository) temel durumu ifade eder. Özellikle `rootfs`, `qemu` ve `dts` dizinleri depoda yalnızca kalıcı kılınabilmesi amacıyla `.gitkeep` dosyasıyla veya asgari betiklerle barındırılmaktadır. İlgili otonom betikler (`build_kernel_full.sh` ve `build_all.sh`) çalıştırıldığında; Linux kaynak kodları `qemu/` dizinine indirilir, derlenen Ext4 imajları `rootfs/` dizinine yaratılır ve özel Device Tree yapıları `dts/` dizininde dinamik olarak doldurulur.
+Aşağıdaki yapı, kaynak kod yönetim sistemindeki (Repository) temel durumu ifade eder. Özellikle `rootfs`, `qemu` ve `dts` dizinleri depoda yalnızca kalıcı kılınabilmesi amacıyla `.gitkeep` dosyasıyla barındırılmaktadır. Kök dizindeki `Makefile` tek kullanıcı arayüzüdür; ağır derleme ve imaj üretim betikleri yalnızca `scripts/` altında iç uygulama detayı olarak tutulur.
 
 ```text
 ├── docker
-│   ├── Dockerfile
-│   └── build.sh
+│   └── Dockerfile
 ├── dts
-│   └── extract_dts.sh
+│   └── .gitkeep
 ├── qemu
-│   └── Makefile
+│   └── .gitkeep
 ├── rootfs
 │   └── .gitkeep
+├── scripts
+│   ├── build_all.sh
+│   └── build_kernel_full.sh
 ├── source_code
 │   ├── driver
 │   │   ├── Makefile
@@ -46,16 +48,13 @@ Aşağıdaki yapı, kaynak kod yönetim sistemindeki (Repository) temel durumu i
 │   ├── monitor.c
 │   └── stress_mem.c
 ├── .gitignore
-├── README.md
-├── boot_qemu.sh
-├── build_all.sh
-├── build_kernel_full.sh
-└── clean_all.sh
+├── Makefile
+└── README.md
 ```
 
 ## 4. Kurulum ve Otonom Derleme Adımları
 
-Tüm süreç, ana makinenin yalıtımını korumak ve bağımlılık sorunlarını minimize etmek için Docker ile otomatize edilmiştir. 
+Derleme, başlatma, temizleme ve tam sıfırlama işlemleri proje kök dizinindeki evrensel `Makefile` üzerinden yürütülür. Kullanıcı, Docker konteynerini veya alt bash betiklerini doğrudan çağırmaz; müdahale noktası yalnızca `make` hedefleridir. Kök `Makefile`, Docker imajı üretimini, çekirdek derlemesini, sistem imajı paketlemesini, QEMU başlatmasını ve host üzerinde çalışan temizlik adımlarını merkezi olarak orkestre eder.
 
 ### 4.1. Projenin Klonlanması
 Mimarinin yapı taşlarını barındıran kaynak kod deposunu yerel çalışma ortamınıza indiriniz ve proje kök dizinine geçiş yapınız:
@@ -64,57 +63,54 @@ git clone https://github.com/abdullahgorgen/embedded-os-arm64.git
 cd embedded-os-arm64
 ```
 
-### 4.2. Konteyner İmajının Hazırlanması (arm64-embedded-dev)
-Projeyi sisteminize ilk klonladığınızda, çapraz derleyici (cross-compiler) ve QEMU araçlarını barındıran temel Docker imajını oluşturmanız gerekmektedir.
+### 4.2. Tam Otonom Derleme
+Docker imajı, Linux çekirdeği, kullanıcı uzayı bileşenleri, çekirdek modülü, Device Tree çıktıları ve RootFS imajı tek komutla sıralı biçimde üretilir:
 ```bash
-cd docker
-./build.sh
-cd ..
+make all
 ```
+`make all` hedefi sırasıyla `docker-image`, `kernel` ve `system` hedeflerini çalıştırır.
 
-### 4.3. Çekirdek İndirme ve Çapraz Derleme
-Çekirdeğin (Linux v6.1.75) sıfırdan indirilip, `aarch64-linux-gnu-` ön ekiyle derlenmesi için aşağıdaki otonom betik kullanılır. İşlem sonucunda `qemu/Image` oluşturulur.
+### 4.3. Ayrık Derleme Hedefleri
+Gerektiğinde üretim hattının belirli bir aşaması doğrudan çağrılabilir:
 ```bash
-docker run --rm -it --privileged -v $(pwd):/workspace arm64-embedded-dev:latest bash /workspace/build_kernel_full.sh
+make docker-image
+make kernel
+make system
+make boot
 ```
+`make docker-image`, `docker/Dockerfile` üzerinden `arm64-embedded-dev:latest` imajını doğrudan üretir. `make kernel`, `scripts/build_kernel_full.sh` iş mantığını ayrıcalıklı Docker konteyneri içinde çalıştırır ve `qemu/Image` çıktısını üretir. `make system`, `scripts/build_all.sh` iş mantığını aynı kontrollü konteyner ortamında yürütür; kullanıcı uzayı binary'lerini, `sys_alarm_driver.ko` modülünü, özel DTB dosyasını ve `rootfs/rootfs.img` imajını üretir. `make boot`, üretilen kernel, DTB ve RootFS imajını QEMU üzerinde başlatır.
 
-### 4.4. Sistemin Otonom Derlenmesi
-Projenin kullanıcı uzayı, çekirdek eklentisi, RootFS paketlemesi ve donanım ağacı operasyonları tek bir komutla derlenir.
-```bash
-docker run --rm -it --privileged -v $(pwd):/workspace -e "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" arm64-embedded-dev:latest bash /workspace/build_all.sh
-```
-`build_all.sh` betiğinin yürüttüğü işlemler sırasıyla şunlardır:
+Konteyner içinde root yetkisiyle üretilen dosyaların host üzerinde silinememesi veya değiştirilememesi problemini engellemek için derleme betikleri işlem sonunda `/workspace` sahipliğini host kullanıcı kimliğine devreder.
+
+`make system` hedefinin yürüttüğü işlemler sırasıyla şunlardır:
 1.  **Çekirdek Hazırlığı:** Ağaç dışı (Out-of-Tree) modül derlemesi için kaynak kodda `modules_prepare` çalıştırılır.
 2.  **Kullanıcı Uzayı Derlemesi:** C kaynak kodları statik olarak (`-static`) derlenir, `strip` işleminden geçirilerek RootFS için sahnelenir.
 3.  **Kernel Sürücü Derlemesi:** Çapraz araç zinciriyle `sys_alarm_driver.ko` oluşturulur.
 4.  **Device Tree Manipülasyonu:** QEMU üzerinden çıkartılan ham `virt` cihaz ağacına `marmara,system-alarm` düğümü enjekte edilir ve yeni bir `custom_virt_machine.dtb` dosyası üretilir.
-5.  **RootFS (Kök Dosya Sistemi) Paketlenmesi:** Ext4 formatında imaj yaratılır, BusyBox kopyalanır, gerekli fstab/init betikleri ayarlanır ve üretilen tüm IPC çalıştırılabilir dosyaları `/usr/bin/` dizinine, çekirdek modülü ise `/lib/modules/` dizinine yerleştirilir.
+5.  **RootFS Paketleme:** Ext4 formatında imaj yaratılır, BusyBox kopyalanır, gerekli `fstab` ve `init` betikleri ayarlanır; IPC çalıştırılabilir dosyaları `/usr/bin/` dizinine, çekirdek modülü ise `/lib/modules/` dizinine yerleştirilir.
 
-### 4.5. Ortam Temizliği
-Derleme sonrası üretilen .o dosyaları, modüller ve imajları temizlemek için iki aşamalı `clean_all.sh` yapısı kurgulanmıştır.
-*   **Standart Temizlik:** Yalnızca kullanıcı uzayı ve modül kalıntılarını temizler.
-*   **Derin Temizlik (`--deep`):** Çekirdek kaynak kodları dahil indirilen ve üretilen her şeyi arındırarak depoyu fabrika ayarlarına döndürür.
+### 4.4. Ortam Temizliği
+Temizlik işlemleri Docker konteyneri başlatmadan, doğrudan host makine üzerinde standart shell komutlarıyla çalışır:
 ```bash
-docker run --rm -it --privileged -v $(pwd):/workspace arm64-embedded-dev:latest bash /workspace/clean_all.sh
+make clean
+make distclean
 ```
+`make clean`, kullanıcı uzayı binary'lerini, sürücü ara çıktılarını, Device Tree çıktılarını, RootFS staging dizinini ve `rootfs.img` dosyasını siler. `make distclean`, standart temizliğe ek olarak indirilen Linux kaynak ağacını, Linux arşivini, `qemu/Image` dosyasını, BusyBox kaynaklarını, BusyBox arşivini ve BusyBox kurulum dizinini kaldırır.
 
 ## 5. Sistemin Başlatılması ve Test
 
-Oluşturulan nihai `Image`, `custom_virt_machine.dtb` ve `rootfs.img` bileşenleri kullanılarak emülatörün başlatılması tek bir otonom betik üzerinden gerçekleştirilir. Ana makinede (WSL terminalinde) şu komutu çalıştırın:
+Oluşturulan nihai `Image`, `custom_virt_machine.dtb` ve `rootfs.img` bileşenleri kullanılarak emülatör Makefile üzerinden başlatılır. Ana makinede şu komutu çalıştırın:
 ```bash
-./boot_qemu.sh
+make boot
 ```
-Sistem yüklendikten sonra kök (`~ #`) terminalinde sırasıyla şu test senaryosunu icra edin:
+Boot sırasında RootFS içindeki `/etc/init.d/rcS` betiği otomatik çalışır ve `sys_alarm_driver.ko` modülünü `/sbin/insmod /lib/modules/sys_alarm_driver.ko` komutuyla sisteme yükler. Bu nedenle kullanıcı terminalinde ayrıca `insmod` çalıştırılmayacaktır.
 
+Sistem yüklendikten sonra kök (`~ #`) terminalinde yalnızca test yükü ve IPC izleme hattı manuel başlatılır:
 ```sh
-# 1. Platform sürücüsünü sisteme yükleyin
-insmod /lib/modules/sys_alarm_driver.ko
-
-# 2. Arka planda donanım yük testini başlatın
+# 1. Bellek yük testini arka planda başlatın
 stress_mem &
 
-# 3. İletişim boru hattını (IPC Pipeline) ve grafiksel arayüzü başlatın
+# 2. IPC boru hattını ve terminal arayüzünü başlatın
 meminfo
 ```
-Sistem %80 bellek kullanımını aştığında, arka planda çekirdek alanında donanımsal alarmların (dmesg) tetiklendiği raporlanacaktır.
-
+`stress_mem` ve `meminfo` init sürecine dahil edilmez; bu süreçlerin yaşam döngüsü kullanıcı kontrolündedir. Sistem %80 bellek kullanımını aştığında `monitor`, otomatik yüklenmiş `/dev/sys_alarm` sürücüsüne alarm durumunu iletir ve çekirdek alanında donanımsal alarm mesajları üretilir.

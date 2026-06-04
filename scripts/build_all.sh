@@ -5,8 +5,8 @@
 
 set -e
 
-# Betiğin çalıştığı kök dizini dinamik olarak al
-PROJECT_ROOT=$(pwd)
+# Betik scripts/ altında dursa da proje kökü konteyner içinde /workspace'tir.
+PROJECT_ROOT="/workspace"
 KDIR="$PROJECT_ROOT/qemu/linux-6.1.75"
 ARCH="arm64"
 CROSS="aarch64-linux-gnu-"
@@ -126,7 +126,7 @@ fi
 
 # Temel dizin yapısının oluşturulması
 cd "$PROJECT_ROOT"
-mkdir -p "$ROOTFS_TREE"/{bin,sbin,lib,lib64,etc,dev,proc,sys,tmp,root,var/log,run}
+mkdir -p "$ROOTFS_TREE"/{bin,sbin,lib,lib64,etc/init.d,dev,proc,sys,tmp,root,var/log,run}
 
 # BusyBox bileşenlerinin aktarılması
 cp -a "$BUSYBOX_INSTALL"/* "$ROOTFS_TREE/"
@@ -138,6 +138,7 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+/etc/init.d/rcS
 echo ""
 echo "=== QEMU ARM64 Embedded Linux ==="
 echo "Kernel: \$(uname -r)"
@@ -145,6 +146,12 @@ echo ""
 exec setsid cttyhack /bin/sh
 EOF_INIT
 chmod 755 "$ROOTFS_TREE/init"
+
+cat << 'EOF_RCS' > "$ROOTFS_TREE/etc/init.d/rcS"
+#!/bin/sh
+/sbin/insmod /lib/modules/sys_alarm_driver.ko 2>/dev/null || true
+EOF_RCS
+chmod 755 "$ROOTFS_TREE/etc/init.d/rcS"
 
 # Dosya sistemi montaj tablosunun oluşturulması
 cat << 'EOF_FSTAB' > "$ROOTFS_TREE/etc/fstab"
@@ -198,6 +205,7 @@ check_file "Stress Tool"        "usr/bin/stress_mem"
 check_file "Orchestrator"       "usr/bin/meminfo"
 check_file "Platform Sürücüsü"  "lib/modules/sys_alarm_driver.ko"
 check_file "Init Betiği"        "init"
+check_file "Init RC Betiği"     "etc/init.d/rcS"
 check_file "BusyBox Binary"     "bin/busybox"
 
 umount "$MNTDIR"
@@ -210,3 +218,5 @@ else
     echo "HATA STATUS: DOSYA SİSTEMİ BÜTÜNLÜĞÜ BOZUK!"
     exit 1
 fi
+
+chown -R "${HOST_UID:-$(id -u)}:${HOST_GID:-$(id -g)}" /workspace

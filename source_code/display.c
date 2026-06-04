@@ -20,7 +20,7 @@
 
 /* ─── Sabitler ─────────────────────────────────────────────── */
 #define FIFO_PIPE2    "/tmp/pipe_2"
-#define BAR_WIDTH     30          /* ASCII progress bar genişliği */
+#define BAR_WIDTH     34          /* ASCII progress bar genişliği */
 
 /* ─── ANSI Renk Kodları ────────────────────────────────────── */
 #define ANSI_RESET    "\033[0m"
@@ -32,9 +32,6 @@
 #define ANSI_WHITE    "\033[37m"
 #define ANSI_BG_RED   "\033[41m"
 #define ANSI_BG_GREEN "\033[42m"
-
-/* ANSI: İmleç başa dön + ekranı temizle */
-#define CLEAR_SCREEN  "\033[2J\033[H"
 
 /* ─── Veri Yapısı (monitor ile aynı) ───────────────────────── */
 typedef enum {
@@ -105,50 +102,51 @@ static void render(const MemAnalysis *d)
     const char *status_color  = (d->status == STATUS_CRITICAL)
                                  ? ANSI_RED : ANSI_GREEN;
     const char *status_label  = (d->status == STATUS_CRITICAL)
-                                 ? "CRITICAL ⚠" : "NORMAL   ✓";
+                                 ? "CRITICAL (Kritik Eşik: >%80)"
+                                 : "NORMAL (Kritik Eşik: >%80)";
 
     /* ── Ekranı temizle ve tabloyu bas ── */
-    fputs(CLEAR_SCREEN, stdout);
+    printf("\033[2J\033[H");
 
     /* Başlık */
-    printf("%s╔══════════════════════════════════════════════╗%s\n",
+    printf("%s╔══════════════════════════════════════════════════════════╗%s\n",
            ANSI_CYAN, ANSI_RESET);
-    printf("%s║%s %s  ARM64 BELLEK İZLEYİCİ — IPC Pipeline  %s%s║%s\n",
+    printf("%s║%s %s        ARM64 BELLEK İZLEYİCİ - IPC Pipeline        %s%s║%s\n",
            ANSI_CYAN, ANSI_RESET,
            ANSI_BOLD, ANSI_RESET,
            ANSI_CYAN, ANSI_RESET);
-    printf("%s╚══════════════════════════════════════════════╝%s\n",
+    printf("%s╚══════════════════════════════════════════════════════════╝%s\n",
            ANSI_CYAN, ANSI_RESET);
 
     /* Meta bilgisi */
-    printf("\n  %sSıra No  :%s  #%u\n",        ANSI_WHITE, ANSI_RESET, d->seq);
-    printf("  %sZaman    :%s  %s\n",            ANSI_WHITE, ANSI_RESET, time_str);
+    printf("\n  %sSıra No   :%s  #%u\n", ANSI_WHITE, ANSI_RESET, d->seq);
+    printf("  %sZaman     :%s  %s\n",   ANSI_WHITE, ANSI_RESET, time_str);
 
     /* Ayırıcı */
-    printf("\n%s  ────────────────────────────────────────────%s\n",
+    printf("\n%s  ────────────────────────────────────────────────────────%s\n",
            ANSI_WHITE, ANSI_RESET);
 
     /* Bellek değerleri */
-    printf("  %sToplam   :%s  %s\n", ANSI_WHITE, ANSI_RESET, total_str);
-    printf("  %sKullanım :%s  %s\n", ANSI_WHITE, ANSI_RESET, used_str);
-    printf("  %sSerbest  :%s  %s\n", ANSI_WHITE, ANSI_RESET, free_str);
+    printf("  %sToplam    :%s  %-12s\n", ANSI_WHITE, ANSI_RESET, total_str);
+    printf("  %sKullanım  :%s  %-12s\n", ANSI_WHITE, ANSI_RESET, used_str);
+    printf("  %sSerbest   :%s  %-12s\n", ANSI_WHITE, ANSI_RESET, free_str);
 
     /* Progress bar */
-    printf("\n  %s%.1f%%%s  ", ANSI_BOLD, d->usage_pct, ANSI_RESET);
+    printf("\n  %sDoluluk   :%s  %6.1f%%  ", ANSI_WHITE, ANSI_RESET, d->usage_pct);
     draw_progress_bar(d->usage_pct, BAR_WIDTH);
     putchar('\n');
 
     /* Durum etiketi */
-    printf("\n  %sDurum    :%s %s%s %s%s\n",
+    printf("\n  %sDurum     :%s  %s%s%s%s\n",
            ANSI_WHITE, ANSI_RESET,
            ANSI_BOLD, status_color,
            status_label,
            ANSI_RESET);
 
     /* Alt ayırıcı */
-    printf("\n%s  ────────────────────────────────────────────%s\n",
+    printf("\n%s  ────────────────────────────────────────────────────────%s\n",
            ANSI_WHITE, ANSI_RESET);
-    printf("  %s[collector → pipe_1 → monitor → pipe_2 → display]%s\n\n",
+    printf("  %s[collector -> pipe_1 -> monitor -> pipe_2 -> display]%s\n\n",
            ANSI_CYAN, ANSI_RESET);
 
     fflush(stdout);
