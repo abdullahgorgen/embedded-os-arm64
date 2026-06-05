@@ -103,9 +103,9 @@ Oluşturulan nihai `Image`, `custom_virt_machine.dtb` ve `rootfs.img` bileşenle
 ```bash
 make boot
 ```
-Boot sırasında RootFS içindeki `/etc/init.d/rcS` betiği otomatik çalışır ve `sys_alarm_driver.ko` modülünü `/sbin/insmod /lib/modules/sys_alarm_driver.ko` komutuyla sisteme yükler. Bu nedenle kullanıcı terminalinde ayrıca `insmod` çalıştırılmayacaktır.
+Boot sırasında RootFS içindeki `/etc/init.d/rcS` betiği otomatik çalışır ve `sys_alarm_driver.ko` modülünü `/sbin/insmod /lib/modules/sys_alarm_driver.ko` komutuyla sisteme yükler.
 
-Sistem yüklendikten sonra kök (`~ #`) terminalinde yalnızca test yükü ve IPC izleme hattı manuel başlatılır:
+Sistem yüklendikten sonra kök (`~ #`) terminalinde test yükü ve IPC izleme hattı manuel başlatılır:
 ```sh
 # 1. Bellek yük testini arka planda başlatın
 stress_mem &
@@ -113,4 +113,4 @@ stress_mem &
 # 2. IPC boru hattını ve terminal arayüzünü başlatın
 meminfo
 ```
-`stress_mem` ve `meminfo` init sürecine dahil edilmez; bu süreçlerin yaşam döngüsü kullanıcı kontrolündedir. Sistem %80 bellek kullanımını aştığında `monitor`, otomatik yüklenmiş `/dev/sys_alarm` sürücüsüne alarm durumunu iletir ve çekirdek alanında donanımsal alarm mesajları üretilir.
+,Sistem %80 bellek kullanımını aştığında `monitor`, otomatik yüklenmiş `/dev/sys_alarm` sürücüsüne alarm durumunu iletir ve çekirdek alanında donanımsal alarm mesajları üretilir.
