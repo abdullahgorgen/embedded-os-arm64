@@ -4,6 +4,7 @@ PROJECT_ROOT := $(CURDIR)
 IMAGE_NAME := arm64-embedded-dev:latest
 DOCKER_RUN := docker run --rm -it --privileged \
 	-v "$(PROJECT_ROOT):/workspace" \
+	-v /dev:/dev \
 	-e HOST_UID="$(shell id -u)" \
 	-e HOST_GID="$(shell id -g)" \
 	-e PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
